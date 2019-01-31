@@ -1,0 +1,1478 @@
+Sub Single_File()
+' Declare some variables
+'Results_Page
+Dim wb As Workbook
+Set wb = ActiveWorkbook
+Dim Ws_R As Worksheet
+Set Ws_R = wb.Sheets("Results_Page")
+Dim Ws_R_HR As Integer
+
+Ws_R_HR = 1 'Header Row
+
+Dim Ws_R_Lr_S As Integer
+Dim Prev_Res As VbMsgBoxResult
+Dim Ws_R_Lr_F As Integer
+Dim ReturnBox As VbMsgBoxResult
+Dim Nil_Return As VbMsgBoxResult
+Dim Ws_R_LC As Integer
+Dim File_IP As Integer
+Dim File_Total As Integer
+'Wait_Page
+Dim Ws_W As Worksheet
+Set Ws_W = wb.Sheets("Please wait..search in progress")
+
+'*************************************************************************
+'If previous results exists, see if new results need to be appended/clear and replace
+
+Ws_R_Lr_S = Ws_R.Cells(Rows.Count, "A").End(xlUp).Row
+
+If Ws_R_Lr_S > 1 Then
+' Offer user a choice - clear results or keep them
+Prev_Res = MsgBox("Do you want to replace the previous results?", vbYesNo, "Results already found")
+    If Prev_Res = vbYes Then
+    Call Clear_results
+    Ws_R.Visible = xlSheetVisible
+    Else
+    End If
+Else
+End If
+
+'*************************************************************************
+'Get user to select the file they want to check
+
+Application.StatusBar = "Please select a file to check"
+
+Dim N_wb As Variant
+Dim A As String
+
+N_wb = Application.GetOpenFilename(Title:="Select File To Be Checked")
+
+If N_wb = "False" Then
+    A = MsgBox("No file selected", vbOKOnly, "File selection error")
+    Exit Sub
+Else
+End If
+'*************************************************************************
+File_IP = 1
+File_Total = 1
+'Create some variables to be used on the wait page - these values show an indication of progress
+Range("File_IP").Value = File_IP
+Range("File_Total").Value = File_Total
+Range("Cell_IP").Value = "..."
+Range("Cell_Total").Value = "..."
+Ws_W.Visible = xlSheetVisible
+Ws_W.Activate
+
+'Call the main module, passing through the path of the workbook to be checked. 
+Call Control(N_wb, File_IP, File_Total)
+
+'*************************************************************************
+'*************************************************************************
+'If results have been found - sort by risk
+Ws_R.Activate
+Ws_R_Lr_F = Ws_R.Cells(Rows.Count, "A").End(xlUp).Row
+Ws_R_LC = Ws_R.Cells(Ws_R_HR, Ws_R.Columns.Count).End(xlToLeft).Column
+
+If Ws_R_Lr_F > 1 Then
+    If Ws_R_Lr_F > 2 Then
+    
+    Ws_R.Activate
+    
+    Range(Cells(1, 1).EntireColumn, Cells(1, Ws_R_LC).EntireColumn).Select
+    
+        ActiveWorkbook.Worksheets("Results_Page").Sort.SortFields.Clear
+        ActiveWorkbook.Worksheets("Results_Page").Sort.SortFields.Add Key:=Range( _
+            Cells(1, 1), Cells(Ws_R_Lr_F, 1)), SortOn:=xlSortOnValues, Order:=xlDescending, DataOption:= _
+            xlSortNormal
+        With ActiveWorkbook.Worksheets("Results_Page").Sort
+            .SetRange Range(Cells(1, 1), Cells(Ws_R_Lr_F, Ws_R_LC))
+            .Header = xlYes
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .SortMethod = xlPinYin
+            .Apply
+        End With
+        
+    Else
+    End If
+    
+    Ws_R.Cells(1, 1).Select
+    
+    ReturnBox = MsgBox("Possible sensitive data found. Please check these results carefully", vbCritical, "Possible Sensitive Data")
+    
+Else
+Ws_R.Visible = xlSheetHidden
+Nil_Return = MsgBox("No known sensitive data types have been matched." & vbLf & vbLf & "Please see the notes section for further information on what sensitive data is searched for.", vbOKOnly, "No known sensitive data types matched")
+End If
+
+Ws_W.Visible = xlSheetHidden
+Application.Calculation = xlCalculationAutomatic
+Application.StatusBar = False
+'Application.ScreenUpdating = True
+Application.Cursor = xlDefault
+'*************************************************************************
+
+End Sub
+
+
+Sub Folder_Search()
+
+' Similar to the above, but this is for a folder search.
+
+'Set a reference to Microsoft Scripting Runtime by using
+    'Tools > References in the Visual Basic Editor (Alt+F11)
+    
+    'Declare the variables
+    Dim objFSO As FileSystemObject
+    Dim objFolder As Folder
+    Dim SubFolder As Folder
+    Dim objFile As File
+    Dim FilePath As Variant
+    Dim Filename As String
+    Dim FileExt As String
+    Dim A As String
+    Dim fldr As FileDialog
+    Dim SearchFolder As String
+    Dim wb As Workbook
+    Set wb = ActiveWorkbook
+    Dim Ws_R_HR As Integer
+    Dim Ws_R_Lr_S As Integer
+    Dim Prev_Res As VbMsgBoxResult
+    
+    Dim Ws_R_Lr_F As Integer
+    Dim ReturnBox As VbMsgBoxResult
+    Dim Nil_Return As VbMsgBoxResult
+    Dim Ws_R_LC As Integer
+
+    Dim File_IP As Integer
+    Dim File_Total As Integer
+
+'Wait_Page
+Dim Ws_W As Worksheet
+Set Ws_W = wb.Sheets("Please wait..search in progress")
+'Results_Page
+Dim Ws_R As Worksheet
+Set Ws_R = wb.Sheets("Results_Page")
+Ws_R_HR = 1 'Header Row
+
+'*************************************************************************
+'If previous results exists, see if new results need to be appended/clear and replace
+
+Ws_R_Lr_S = Ws_R.Cells(Rows.Count, "A").End(xlUp).Row
+
+If Ws_R_Lr_S > 1 Then
+'Offer user a choice to keep/clear results
+Prev_Res = MsgBox("Do you want to replace the previous results?", vbYesNo, "Results already found")
+    If Prev_Res = vbYes Then
+    Call Clear_results
+    Ws_R.Visible = xlSheetVisible
+    Else
+    End If
+Else
+End If
+    
+Application.Cursor = xlWait
+' Variables to be used for the progress counter on the wait page
+Range("File_IP").Value = "..."
+Range("File_Total").Value = "..."
+Range("Cell_IP").Value = "..."
+Range("Cell_Total").Value = "..."
+
+Ws_W.Visible = xlSheetVisible
+Ws_W.Activate
+'*************************************************************************
+    'Specify the path to the folder - user prompt
+    Set fldr = Application.FileDialog(msoFileDialogFolderPicker)
+    With fldr
+        .Title = "Select a Folder to search"
+        .AllowMultiSelect = False
+        .InitialFileName = Application.DefaultFilePath
+        If .Show <> -1 Then GoTo NextCode
+        SearchFolder = .SelectedItems(1)
+    End With
+NextCode:
+    
+    Set fldr = Nothing
+    
+    
+    If SearchFolder = "False" Then
+    A = MsgBox("No file selected", vbOKOnly, "File selection error")
+    Exit Sub
+    End If
+    'Create an instance of the FileSystemObject
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    
+        
+    'Get the folder
+    Set objFolder = objFSO.GetFolder(SearchFolder)
+    
+    'If the folder does not contain files, exit the sub
+    If objFolder.Files.Count = 0 Then
+        MsgBox "No files were found...", vbExclamation
+        Exit Sub
+    End If
+     
+    'Turn off screen updating
+    'Application.ScreenUpdating = False
+    
+    For Each SubFolder In objFolder.SubFolders
+      
+    File_Total = SubFolder.Files.Count
+    File_IP = 0
+        'Loop through each file in the folder
+    For Each objFile In SubFolder.Files 'objFolder.Files
+    
+        'List the name, size, and date/time of the current file
+        Filename = objFile.Name
+        FilePath = objFile.Path
+        FileExt = objFSO.GetExtensionName(FilePath)
+        
+        
+        'If the file is excel xls/xlsx/csv then run the checker
+        If (StrComp(FileExt, "xls", vbTextCompare) = 0 Or StrComp(FileExt, "xlsx", vbTextCompare) = 0 Or StrComp(FileExt, "csv", vbTextCompare) = 0 _
+        Or StrComp(FileExt, "xlsm", vbTextCompare) = 0 Or StrComp(FileExt, "xltm", vbTextCompare) = 0 Or StrComp(FileExt, "xltx", vbTextCompare) = 0 _
+        Or StrComp(FileExt, "xml", vbTextCompare) = 0) Then
+        File_IP = File_IP + 1
+        Call Control(FilePath, File_IP, File_Total)
+        
+        End If
+        
+               
+    Next objFile
+    
+    Next SubFolder
+    
+        File_Total = objFolder.Files.Count
+        File_IP = 0
+        
+        For Each objFile In objFolder.Files
+    
+        'List the name, size, and date/time of the current file
+        Filename = objFile.Name
+        FilePath = objFile.Path
+        FileExt = objFSO.GetExtensionName(FilePath)
+        
+        
+        'If the file is excel xls/xlsx/csv then run the checker
+        If (StrComp(FileExt, "xls", vbTextCompare) = 0 Or StrComp(FileExt, "xlsx", vbTextCompare) = 0 Or StrComp(FileExt, "csv", vbTextCompare) = 0 _
+        Or StrComp(FileExt, "xlsm", vbTextCompare) = 0 Or StrComp(FileExt, "xltm", vbTextCompare) = 0 Or StrComp(FileExt, "xltx", vbTextCompare) = 0 _
+        Or StrComp(FileExt, "xml", vbTextCompare) = 0) Then
+        File_IP = File_IP + 1
+        Call Control(FilePath, File_IP, File_Total)
+        End If
+        
+               
+    Next objFile
+'*************************************************************************
+'If results have been found - sort by risk
+      
+Ws_R.Activate
+Ws_R_Lr_F = Ws_R.Cells(Rows.Count, "A").End(xlUp).Row
+Ws_R_LC = Ws_R.Cells(Ws_R_HR, Ws_R.Columns.Count).End(xlToLeft).Column
+      
+If Ws_R_Lr_F > 1 Then
+    If Ws_R_Lr_F > 2 Then
+    
+    Ws_R.Activate
+    
+    Range(Cells(1, 1).EntireColumn, Cells(1, Ws_R_LC).EntireColumn).Select
+    
+        ActiveWorkbook.Worksheets("Results_Page").Sort.SortFields.Clear
+        ActiveWorkbook.Worksheets("Results_Page").Sort.SortFields.Add Key:=Range( _
+            Cells(1, 1), Cells(Ws_R_Lr_F, 1)), SortOn:=xlSortOnValues, Order:=xlDescending, DataOption:= _
+            xlSortNormal
+        With ActiveWorkbook.Worksheets("Results_Page").Sort
+            .SetRange Range(Cells(1, 1), Cells(Ws_R_Lr_F, Ws_R_LC))
+            .Header = xlYes
+            .MatchCase = False
+            .Orientation = xlTopToBottom
+            .SortMethod = xlPinYin
+            .Apply
+        End With
+        
+    Else
+    End If
+    
+    Ws_R.Cells(1, 1).Select
+    
+    ReturnBox = MsgBox("Possible sensitive data found. Please check these results carefully", vbCritical, "Possible Sensitive Data")
+    
+Else
+Ws_R.Visible = xlSheetHidden
+Nil_Return = MsgBox("No known sensitive data types have been matched." & vbLf & vbLf & "Please see the notes section for further information on what sensitive data is searched for.", vbOKOnly, "No known sensitive data types matched")
+End If
+
+Ws_W.Visible = xlSheetHidden
+Application.Calculation = xlCalculationAutomatic
+Application.StatusBar = False
+'Application.ScreenUpdating = True
+Application.Cursor = xlDefault
+End Sub
+
+Sub Control(N_wb As Variant, File_IP As Integer, File_Total As Integer)
+
+'This is the main module
+
+'*********************************************************************************************************************************************************************************
+' Constants - defined at the start. This includes REGEX patterns and weighting
+'*********************************************************************************************************************************************************************************
+Dim Data_Score As Integer
+Dim Match_Found As String
+Dim Corpus_Score As Integer
+Dim Corpus_Match_Found As String
+Dim Col_Test As Long
+Dim wb As Workbook
+Set wb = ActiveWorkbook
+
+TooMany_Results = 10000 ' After this many results, the tool stops searching the document.
+
+'Results_Page
+Dim Ws_R As Worksheet
+Set Ws_R = wb.Sheets("Results_Page")
+Ws_R_HR = 1 'Header Row
+
+'Columns for Data output
+C_Row = 4       'Column for the row data found in
+C_Col = 5       ' column for the column data found in
+C_Ctx = 3       ' Column for the cell value
+C_Type = 2      ' Column to show types of matches found
+C_Scre = 1       ' Column for the score
+C_WbN = 6       ' Column for the Workbook Name
+C_WsN = 7       ' Column for the worksheet name
+C_WbP = 8       ' Column for the workbook path
+
+'Wait_Page
+Dim Ws_W As Worksheet
+Set Ws_W = wb.Sheets("Please wait..search in progress")
+
+'Corpuses
+Dim Ws_C As Worksheet
+Set Ws_C = wb.Sheets("Corpuses")
+Ws_C_HR = 1
+
+'Columns of corpuses, and weights for the column
+Corpus_FName = 1
+Dim WE_FName As Integer
+WE_FName = 2
+
+Corpus_County = 2
+Dim WE_County As Integer
+WE_County = 2
+
+Corpus_Town = 3
+Dim WE_Town As Integer
+WE_Town = 2
+
+Corpus_Street = 4
+Dim WE_Street As Integer
+WE_Street = 2
+
+Corpus_Phone = 5
+Dim WE_Phone2 As Integer
+WE_Phone2 = 2
+
+'*********************************************************************************************************************************************************************************
+' Patterns (RE) & Weights (WE)
+'*********************************************************************************************************************************************************************************
+'Nino locator
+Dim RE_NINO As String
+RE_NINO = "(?!BG)(?!GB)(?!NK)(?!KN)(?!TN)(?!NT)(?!ZZ)(\s*[A-CEGHJ-PR-TW-Z|a-ceghj-pr-tw-z][A-CEGHJ-NPR-TW-Z|a-ceghj-pr-tw-z])(\s*-*\d\s*-*){6}([A-D|a-d]|\s|.)"
+Dim WE_Nino As Integer
+WE_Nino = 2
+
+'Date locator
+Dim RE_DOB As String
+RE_DOB = "(0[1-9]|[12][0-9]|3[01])[- \/.](0[1-9]|1[012])[- \/.](19|20)[0-9]{2}"
+Dim WE_DOB As Integer
+WE_DOB = 1
+
+'Date locator 2
+Dim RE_DOB2 As String
+RE_DOB2 = "([1-9]|0[1-9]|1[0-9]|2[0-9]|3[0-1])(\s|th\s|st\s|nd\s|rd\s|-|/)(Jan|January|Feb|February|Mar|March|April|Apr|May|Jun|June|Jul|July|Aug|August|Sep|September|Oct|October|Nov|November|Dec|December)(\s|-|/)(19|20)[0-9]{2}"
+Dim WE_DOB2 As Integer
+WE_DOB2 = 1
+
+
+'*************************************************************************
+'Postcode Locator
+Dim RE_PCDE As String
+RE_PCDE = "([Gg][Ii][Rr] 0[Aa]{2})|((([A-Za-z][0-9]{1,2})|(([A-Za-z][A-Ha-hJ-Yj-y][0-9]{1,2})|(([A-Za-z][0-9][A-Za-z])|([A-Za-z][A-Ha-hJ-Yj-y][0-9]?[A-Za-z])))) [0-9][A-Za-z]{2})"
+'https://en.wikipedia.org/wiki/Postcodes_in_the_United_Kingdom
+Dim WE_PCDE As Integer
+WE_PCDE = 2
+'*************************************************************************
+
+'*************************************************************************
+'IP Locator
+Dim RE_IP As String
+RE_IP = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])"
+Dim WE_IP As Integer
+WE_IP = 2
+'*************************************************************************
+
+''*************************************************************************
+
+'*************************************************************************
+'UK Driver Number
+Dim RE_DL As String
+RE_DL = "(\s[A-Za-z9]{5})([0-9])([0-9]{2})([0-9]{2})([0-9]{1})([A-Za-z9]{2})([0-9])([A-Za-z9]{2}\s)"
+Dim WE_DL As Integer
+WE_DL = 2
+
+'A UK Driver Number is made up of 16 alpha-numeric characters, for example, MORGA657054SM9IJ
+
+'The Number is constructed in the following way:
+'"   Characters 1 - 5:           Is the first five characters of the surname (padded with 9s if less than 5 characters long).
+'"   Character 6:                   Is the decade digit from the year of birth (for example, for 1987 it would be 8).
+'"   Characters 7 - 8:           Is the month of birth.  If the driver is female, the 7th character incremented by 5.
+'"   Characters 9 - 10:        Is the date within the month of birth.
+'"   Character 11:                 Is the year digit from the year of birth (for example, for 1987 it would be 7).
+'"   Characters 12 - 13:      Are the first two initials of the first names, padded with a 9 if there is no middle name.
+'"   Character 14:                 Is an arbitrary digit - usually 9, but decremented to differentiate drivers with the first 13 characters in common.
+'"   Characters 15-16:        Are two computer check alpha characters.
+'*************************************************************************
+
+'*************************************************************************
+'Passport Number Locator
+Dim RE_Pass As String
+RE_Pass = "(\s\d{9}\s)"
+Dim WE_Pass As Integer
+WE_Pass = 1
+'*************************************************************************
+
+'*************************************************************************
+'Sortcode Locator
+Dim RE_SC As String
+RE_SC = "(\s\d{2})(-|\s?)(\d{2})(-|\s?)(\d{2}\s)"
+Dim WE_SC As Integer
+WE_SC = 1
+'*************************************************************************
+
+'*************************************************************************
+'Account Number Locator
+Dim RE_AC As String
+RE_AC = "(\s\d{8}\s)"
+Dim WE_AC As Integer
+WE_AC = 1
+'*************************************************************************
+'Email Address Locator
+Dim RE_Email As String
+RE_Email = "(@)"
+Dim WE_Email As Integer
+WE_Email = 2
+
+'Phone Number Locator
+Dim RE_Phone As String
+RE_Phone = "(\d){4,5}(\s)(\d){6,7}|(\d){4,5}(\s)(\d){3,4}(\s)(\d){3}"
+Dim WE_Phone As Integer
+WE_Phone = 2
+
+'Currency Locator
+Dim RE_Currency As String
+RE_Currency = "(£|$|€)"
+Dim WE_Currency As Integer
+WE_Currency = 2
+'*************************************************************************
+'*************************************************************************
+
+'*************************************************************************
+'*************************************************************************
+
+'*********************************************************************************************************************************************************************************
+' Start of sub
+'*********************************************************************************************************************************************************************************
+Debug.Print Now()
+Application.Cursor = xlWait
+
+Application.Calculation = xlCalculationManual
+
+'Checks if the categories have been selected on the main page of the checker (These are all named ranges)
+In_NINO = Range("Ch_NINO")
+In_DOB = Range("Ch_DOB").Value
+In_PCode = Range("Ch_PCode").Value
+In_IP = Range("Ch_IP").Value
+In_Driver = Range("Ch_Driver").Value
+In_FName = Range("Ch_FName").Value
+In_County = Range("Ch_County").Value
+In_Town = Range("Ch_Town").Value
+In_Street = Range("Ch_Street").Value
+In_Phone = Range("Ch_Phone").Value
+In_UTR = Range("Ch_UTR").Value
+In_PassPort = Range("Ch_PassPort").Value
+In_SCode = Range("Ch_SCode").Value
+In_AcNo = Range("Ch_AcNo").Value
+In_Email = Range("Ch_Email").Value
+'***************************************
+In_Currency = Range("Ch_Currency").Value
+'***************************************
+
+'*************************************************************************
+
+'Make the user aware it is working
+Application.StatusBar = "Analysing file, please wait..."
+
+Range("File_IP").Value = File_IP
+Range("File_Total").Value = File_Total
+Application.Wait (Now + TimeValue("0:00:01"))
+Range("Cell_IP").Value = "..."
+Range("Cell_Total").Value = "..."
+
+
+'Application.ScreenUpdating = False
+
+'*************************************************************************
+'Open the book
+
+Workbooks.Open (N_wb)
+Dim Curr_Wb As Workbook
+Set Curr_Wb = ActiveWorkbook
+Dim Curr_Sht As Worksheet
+
+'Loop through all sheets
+For Each Curr_Sht In Worksheets
+
+'*************************************************************************
+
+Ws_C.Visible = xlSheetVisible
+Ws_R.Visible = xlSheetVisible
+Ws_W.Activate
+
+'*************************************************************************
+'Loop through all the rows and columns within the sheet
+    
+            Last_Row = Curr_Sht.UsedRange.Rows.Count
+            LastColumn = Curr_Sht.UsedRange.Columns.Count
+            Test_Wb = ActiveWorkbook.Name
+            Test_Wb_Path = ActiveWorkbook.Path
+            Test_Sht = Curr_Sht.Name
+            
+            Total_Cells = Last_Row * LastColumn
+            
+            Range("Cell_Total").Value = Total_Cells
+            
+            For Col_Test = 1 To LastColumn
+            'test = ""
+                    For Row_Test = 1 To Last_Row
+                        
+                        Curr_Cell = Row_Test * Col_Test
+                        Range("Cell_IP").Value = Curr_Cell
+                                                
+                        Test_Value = Curr_Sht.Cells(Row_Test, Col_Test).Value
+                        On Error GoTo Skip_Cell
+                        If Test_Value = "" Then GoTo Skip_Cell
+                        
+'*************************************************************************
+'*************************************************************************
+'Test the values against the REGEX Patterns
+'Part of the Row_Test Loop
+
+'reset the values of the variables used to determine the message received at the end
+Row_Score = 0
+Matches_Out = ""
+
+'*************************************************************************
+'NINO_Locator
+If In_NINO = "Exclude" Then GoTo Skip_Nino
+
+Call Data_Check(Test_Value, Ws_R, RE_NINO, WE_Nino, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+    If Matches_Out = "" Then
+    Matches_Out = "NINO: " & Match_Found
+    Else
+    Matches_Out = Matches_Out & vbLf & "NINO: " & Match_Found
+    End If
+    Row_Score = Row_Score + Data_Score
+Else
+'No NINOS
+End If
+Skip_Nino:
+'*************************************************************************
+'DOB_Locator
+If In_DOB = "Exclude" Then GoTo Skip_DOB
+
+Call Data_Check(Test_Value, Ws_R, RE_DOB, WE_DOB, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+    
+       
+    'Check for certain words near the match
+    Match_Char = InStr(1, Test_Value, Match_Found)
+    
+    DOB_Char = InStr(1, Test_Value, "DOB")
+    DOB2_Char = InStr(1, Test_Value, "D.O.B")
+    DOB3_Char = InStr(1, Test_Value, "birthday")
+    DOB4_Char = InStr(1, Test_Value, "Birthday")
+    DOB5_Char = InStr(1, Test_Value, "Birth date")
+    DOB6_Char = InStr(1, Test_Value, "Birth Date")
+    DOB7_Char = InStr(1, Test_Value, "birth date")
+    
+    'If these matches are present, double the weighting of the match.
+    If DOB_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB2_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB3_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB4_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB5_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB6_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB7_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+       
+    'If the 'Match' has found more than one date value, split
+    If InStr(1, Match_Found, "|") > 0 Then
+        Match_Array = Split(Match_Found, "|")
+    
+        'Loop through the array
+        For Match_Loop = LBound(Match_Array) To UBound(Match_Array)
+        Loop_Value = Match_Array(Match_Loop)
+        'Look for the match within the full string, and see if it has either
+        Match_Start = InStr(1, Test_Value, Loop_Value)
+        Match_Len = Len(Loop_Value)
+        Check_Start = Match_Start + Match_Len
+            'To_Char after it (starting within 2 characters)
+            If InStr(Check_Start, Test_Value, " to ") > 0 And InStr(Check_Start, Test_Value, " to ") <= (Check_Start + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+            If InStr(Check_Start, Test_Value, " To ") > 0 And InStr(Check_Start, Test_Value, " to ") <= (Check_Start + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+            If InStr(Check_Start, Test_Value, " TO ") > 0 And InStr(Check_Start, Test_Value, " to ") <= (Check_Start + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+            '- char after it (starting within 2 characters)
+            
+            If InStr(Check_Start, Test_Value, "-") > 0 And InStr(Check_Start, Test_Value, "-") <= (Check_Start + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+        Next Match_Loop
+    Else
+    'Not multiple dates
+        If Matches_Out = "" Then
+        Matches_Out = "DOB: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "DOB: " & Match_Found
+        End If
+    End If
+         
+Row_Score = Row_Score + Data_Score
+Else
+Skip_Date:
+'No DOBs
+End If
+
+'*************************************************************************
+'DOB_Locator 2
+
+Call Data_Check(Test_Value, Ws_R, RE_DOB2, WE_DOB2, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+    
+       
+    'Check for certain words near the match
+    Match_Char = InStr(1, Test_Value, Match_Found)
+    
+    DOB_Char = InStr(1, Test_Value, "DOB")
+    DOB2_Char = InStr(1, Test_Value, "D.O.B")
+    DOB3_Char = InStr(1, Test_Value, "birthday")
+    DOB4_Char = InStr(1, Test_Value, "Birthday")
+    DOB5_Char = InStr(1, Test_Value, "Birth date")
+    DOB6_Char = InStr(1, Test_Value, "Birth Date")
+    DOB7_Char = InStr(1, Test_Value, "birth date")
+    
+    'If these matches are present, double the weighting of the match.
+    If DOB_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB2_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB3_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB4_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB5_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB6_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If DOB7_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+       
+    'If the 'Match' has found more than one date value, split
+    If InStr(1, Match_Found, "|") > 0 Then
+        Match_Array2 = Split(Match_Found, "|")
+    
+        'Loop through the array
+        For Match_Loop2 = LBound(Match_Array2) To UBound(Match_Array2)
+        Loop_Value2 = Match_Array2(Match_Loop2)
+        'Look for the match within the full string, and see if it has either
+        Match_Start2 = InStr(1, Test_Value, Loop_Value2)
+        Match_Len2 = Len(Loop_Value2)
+        Check_Start2 = Match_Start2 + Match_Len2
+            'To_Char after it (starting within 2 characters)
+            If InStr(Check_Start2, Test_Value, " to ") > 0 And InStr(Check_Start2, Test_Value, " to ") <= (Check_Start2 + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+            If InStr(Check_Start2, Test_Value, " To ") > 0 And InStr(Check_Start2, Test_Value, " to ") <= (Check_Start2 + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+            If InStr(Check_Start2, Test_Value, " TO ") > 0 And InStr(Check_Start2, Test_Value, " to ") <= (Check_Start2 + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+            '- char after it (starting within 2 characters)
+            
+            If InStr(Check_Start2, Test_Value, "-") > 0 And InStr(Check_Start2, Test_Value, "-") <= (Check_Start2 + 2) Then
+            Data_Score = Data_Score / 4
+                    If Matches_Out = "" Then
+                    Matches_Out = "Dates: " & Match_Found
+                    Else
+                    Matches_Out = Matches_Out & vbLf & "Dates: " & Match_Found
+                    End If
+            Else
+            End If
+        Next Match_Loop2
+    Else
+    'Not multiple dates
+        If Matches_Out = "" Then
+        Matches_Out = "DOB: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "DOB: " & Match_Found
+        End If
+    End If
+         
+Row_Score = Row_Score + Data_Score
+Else
+Skip_Date2:
+'No DOBs
+End If
+
+Skip_DOB:
+'*************************************************************************
+'Postcode_Locator
+
+If In_PCode = "Exclude" Then GoTo Skip_PCode
+
+Call Data_Check(Test_Value, Ws_R, RE_PCDE, WE_PCDE, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = "Postcode: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "Postcode: " & Match_Found
+        End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+'No Postcodes
+End If
+
+Skip_PCode:
+'*************************************************************************
+'IP_Locator
+If In_IP = "Exclude" Then GoTo Skip_IP
+
+Call Data_Check(Test_Value, Ws_R, RE_IP, WE_IP, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = "IP: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "IP: " & Match_Found
+        End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+'No IPs
+End If
+
+Skip_IP:
+
+'*************************************************************************
+
+
+'*************************************************************************
+'Driver Number_Locator
+
+If In_Driver = "Exclude" Then GoTo Skip_Driver
+
+Call Data_Check(Test_Value, Ws_R, RE_DL, WE_DL, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = "Driver Number: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "Driver Number: " & Match_Found
+        End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+'No IPs
+End If
+
+Skip_Driver:
+
+'*************************************************************************
+'Passport Number Locator
+If In_PassPort = "Exclude" Then GoTo Skip_Passport
+
+Call Data_Check(Test_Value, Ws_R, RE_Pass, WE_Pass, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+    If InStr(1, Match_Found, ".") Then GoTo Skip_Pass_Row 'Decimal Point
+'Check for certain words near the match
+        
+    Pass_Char = InStr(1, Test_Value, "Passport")
+    Pass2_Char = InStr(1, Test_Value, "passport")
+    Pass3_Char = InStr(1, Test_Value, "pass port")
+    Pass4_Char = InStr(1, Test_Value, "Pass port")
+    Pass5_Char = InStr(1, Test_Value, "Pass Port")
+    Pass6_Char = InStr(1, Test_Value, "pass-port")
+    Pass7_Char = InStr(1, Test_Value, "Pass-port")
+    
+    'If these matches are present, double the weighting of the match.
+    If Pass_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If Pass2_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If Pass3_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If Pass4_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If Pass5_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If Pass6_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If Pass7_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+        
+       
+    If Matches_Out = "" Then
+    Matches_Out = "Passport Number: " & Match_Found
+    Else
+    Matches_Out = Matches_Out & vbLf & "Passport Number: " & Match_Found
+    End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+Skip_Pass_Row:
+'No Match
+End If
+
+Skip_Passport:
+
+
+'*************************************************************************
+'Sortcode Locator
+
+If In_SCode = "Exclude" Then GoTo Skip_SCode
+
+Call Data_Check(Test_Value, Ws_R, RE_SC, WE_SC, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+
+'Check for certain words near the match
+        
+    SC_Char = InStr(1, Test_Value, "Sortcode")
+    SC2_Char = InStr(1, Test_Value, "sortcode")
+    SC3_Char = InStr(1, Test_Value, "sort code")
+    SC4_Char = InStr(1, Test_Value, "Sort code")
+    SC5_Char = InStr(1, Test_Value, "Sort Code")
+        
+    'If these matches are present, double the weighting of the match.
+    If SC_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If SC2_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If SC3_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If SC4_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If SC5_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+        
+       
+    If Matches_Out = "" Then
+    Matches_Out = "Sortcode: " & Match_Found
+    Else
+    Matches_Out = Matches_Out & vbLf & "Sortcode: " & Match_Found
+    End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+'No Match
+End If
+
+Skip_SCode:
+'*************************************************************************
+'Account Number Locator
+
+If In_AcNo = "Exclude" Then GoTo Skip_AcNo
+
+Call Data_Check(Test_Value, Ws_R, RE_Pass, WE_Pass, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+    If InStr(1, Match_Found, ".") Then GoTo Skip_AC_Row 'Decimal Point
+'Check for certain words near the match
+        
+    AC_Char = InStr(1, Test_Value, "Account")
+    AC2_Char = InStr(1, Test_Value, "Account Number")
+    AC3_Char = InStr(1, Test_Value, "account")
+    AC4_Char = InStr(1, Test_Value, "account number")
+    AC5_Char = InStr(1, Test_Value, "acc number")
+    AC6_Char = InStr(1, Test_Value, "Account number")
+    AC7_Char = InStr(1, Test_Value, "Account No")
+    AC8_Char = InStr(1, Test_Value, "Account no")
+    AC9_Char = InStr(1, Test_Value, "Account No.")
+    AC10_Char = InStr(1, Test_Value, "Account no.")
+    
+    'If these matches are present, double the weighting of the match.
+    If AC_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC2_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC3_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC4_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC5_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC6_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC7_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC8_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC9_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+    If AC10_Char > 0 Then
+    Data_Score = Data_Score * 2
+    Else
+    End If
+       
+    If Matches_Out = "" Then
+    Matches_Out = "Account Number: " & Match_Found
+    Else
+    Matches_Out = Matches_Out & vbLf & "Account Number: " & Match_Found
+    End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+Skip_AC_Row:
+'No Match
+End If
+
+Skip_AcNo:
+
+'*************************************************************************
+'Email_Locator
+
+If In_Email = "Exclude" Then GoTo Skip_Email
+
+Call Data_Check(Test_Value, Ws_R, RE_Email, WE_Email, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = "Email: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "Email: " & Match_Found
+        End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+'No Match
+End If
+
+Skip_Email:
+
+'*************************************************************************
+'Phone Numbers
+
+If In_Phone = "Exclude" Then GoTo Skip_Phone
+
+Call Data_Check(Test_Value, Ws_R, RE_Phone, WE_Phone, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+        Call Corpus_Check(Match_Found, Ws_C, Ws_C_HR, Corpus_Phone, "Phone Number Area_Code: ", WE_Phone2, Corpus_Score, Corpus_Match_Found)
+                
+        If Matches_Out = "" Then
+        Matches_Out = "Phone Number: " & Match_Found & " " & Corpus_Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "Phone Number: " & Match_Found & " " & Corpus_Match_Found
+        End If
+        
+    Row_Score = Row_Score + Data_Score + Corpus_Score
+Else
+'No Match
+End If
+
+Skip_Phone:
+
+'*************************************************************************
+'Currency
+
+If In_Currency = "Exclude" Then GoTo Skip_Currency
+
+Call Data_Check(Test_Value, Ws_R, RE_Currency, WE_Currency, Data_Score, Match_Found)
+
+If Data_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = "Currency: " & Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & "Currency: " & Match_Found
+        End If
+        
+    Row_Score = Row_Score + Data_Score
+Else
+'No Match
+End If
+
+Skip_Currency:
+
+'*************************************************************************
+'*************************************************************************
+
+'First_Name Check
+
+If In_FName = "Exclude" Then GoTo Skip_FName
+
+Call Corpus_Check(Test_Value, Ws_C, Ws_C_HR, Corpus_FName, "First Name: ", WE_FName, Corpus_Score, Corpus_Match_Found)
+
+If Corpus_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = Corpus_Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & Corpus_Match_Found
+        End If
+        
+    'Check for certain words near the match
+        
+    Titles_List = Split("Mr ,Mrs ,Dr ,Ms ,Miss ,Master ,Madam ,Rev ,Father ,Hon. ,Honourable ," _
+    & "Mayor ,Mayoress ,Abbess ,Abbot ,MP ,Senator ,MYP ,Speaker ,President ,Governor ,Secretary ," _
+    & "Prince ,Duke ,Duchess ,Count ,Sir ,Judge ,Solicitor ,Brother ,Sister ,Friar ,Bishop ,Priest ,Vicar ," _
+    & "Admiral ,Prof. ,Brigadier ,Captain ,Colonel ,Commander ,Commodore ,Corporal ,General ,Lieutenant ," _
+    & "Major ,Marshal ,Officer ,Doctor ", ",")
+
+    For Title_Loop = LBound(Titles_List) To UBound(Titles_List)
+    Title_Test = ""
+    'Debug.Print Titles_List(Title_Loop)
+    Title_Test = InStr(1, Test_Value, Titles_List(Title_Loop))
+    
+    If Title_Test > 0 Then
+    Corpus_Score = Corpus_Score * 2
+    Else
+    End If
+    
+    Next Title_Loop
+         
+    Row_Score = Row_Score + Corpus_Score
+Else
+'No Match
+End If
+
+Skip_FName:
+
+'************************************************************************************************************************************
+'County
+
+If In_County = "Exclude" Then GoTo Skip_County
+
+Call Corpus_Check(Test_Value, Ws_C, Ws_C_HR, Corpus_County, "Partial Address - County: ", WE_County, Corpus_Score, Corpus_Match_Found)
+
+If Corpus_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = Corpus_Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & Corpus_Match_Found
+        End If
+
+    Row_Score = Row_Score + Corpus_Score
+Else
+'No Match
+End If
+
+Skip_County:
+
+'*************************************************************************************************************************************
+'Town or city
+
+If In_Town = "Exclude" Then GoTo Skip_Town
+
+Call Corpus_Check(Test_Value, Ws_C, Ws_C_HR, Corpus_Town, "Partial Address - Town or City: ", WE_Town, Corpus_Score, Corpus_Match_Found)
+
+If Corpus_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = Corpus_Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & Corpus_Match_Found
+        End If
+
+    Row_Score = Row_Score + Corpus_Score
+Else
+'No Match
+End If
+
+Skip_Town:
+
+'************************************************************************************************************************************
+
+'Street
+
+If In_Street = "Exclude" Then GoTo Skip_Street
+
+Call Corpus_Check(Test_Value, Ws_C, Ws_C_HR, Corpus_Street, "Partial Address - Street: ", WE_Street, Corpus_Score, Corpus_Match_Found)
+
+If Corpus_Score > 0 Then
+
+        If Matches_Out = "" Then
+        Matches_Out = Corpus_Match_Found
+        Else
+        Matches_Out = Matches_Out & vbLf & Corpus_Match_Found
+        End If
+
+    Row_Score = Row_Score + Corpus_Score
+Else
+'No Match
+End If
+
+Skip_Street:
+
+'*************************************************************************
+'Prepare the output
+
+If Row_Score > 0 Then
+'Match/matches found
+
+'Find last used row on output screen
+Ws_R_Lr = Ws_R.Cells(Rows.Count, "A").End(xlUp).Row
+Ws_R_IR = Ws_R_Lr + 1
+
+
+        If Ws_R_Lr > TooMany_Results Then
+        TooManyMsg = MsgBox("Only the first " & TooMany_Results & " results shown.", vbOKOnly, "Too many results found")
+        GoTo TooMany
+        'Too many results found - end loop
+        Else
+        'Keep going
+        End If
+
+Ws_R.Cells(Ws_R_IR, C_Scre).Value = Row_Score
+Ws_R.Cells(Ws_R_IR, C_WbN).Value = Curr_Wb.Name '
+Test_Wb = Curr_Wb.Name
+
+Ws_R.Cells(Ws_R_IR, C_WsN).Value = Test_Sht
+Ws_R.Cells(Ws_R_IR, C_Row).Value = Row_Test
+Ws_R.Cells(Ws_R_IR, C_Col).Value = Col_Test
+Ws_R.Cells(Ws_R_IR, C_Ctx).Value = Test_Value
+'Ws_R.Cells(Ws_R_IR, C_WbP).Value = Test_Wb_Path
+           
+'Add a hyperlink to the worksheet & cell where the data is held.
+'Runs a function to convert the column number to a letter.
+Test_Col_Letter = Col_Letter(Col_Test)
+           
+With Worksheets(1)
+
+.Hyperlinks.Add Anchor:=Ws_R.Cells(Ws_R_IR, C_WbP), _
+Address:=N_wb, _
+SubAddress:="'" & Test_Sht & "'!" & Test_Col_Letter & Row_Test, _
+ ScreenTip:="Go to the cell in the workbook where the data is located.", _
+ TextToDisplay:="Source Workbook Link"
+End With
+
+
+Ws_R.Cells(Ws_R_IR, C_Type).Value = Matches_Out
+            
+Else
+'No Match
+End If
+
+'*************************************************************************
+'Continue the row loop
+
+Skip_Cell:
+                    Next Row_Test
+                    
+'*************************************************************************
+'Continue the Column Loop
+            
+            Next Col_Test
+
+'*************************************************************************
+'Continue the Sheet Loop
+
+Next Curr_Sht
+
+'*************************************************************************
+
+TooMany:    'If too many results are found, exit the loop and finish the sub
+
+'*************************************************************************
+'Close the external book.
+
+Curr_Wb.Close
+
+'*************************************************************************
+'Hide the corpuses
+Ws_C.Visible = xlSheetVeryHidden
+Debug.Print Now()
+
+'Sort the results
+
+'*************************************************************************
+'*************************************************************************
+
+End Sub
+
+Sub Data_Check(Test_Value, Ws_R As Worksheet, RE_Pattern As String, RE_Weight As Integer, ByRef Data_Score As Integer, ByRef Match_Found As String)
+
+'*********************************************************************************************************************************************************************************
+' Test for Pattern (Pattern/weights and test values all passed through from main sub)
+'*********************************************************************************************************************************************************************************
+Dim RE_Check As New RegExp
+
+RE_Check.Pattern = RE_Pattern
+RE_Check.IgnoreCase = True
+RE_Check.MultiLine = True
+RE_Check.Global = True
+
+'Reset Data_Score
+Data_Score = 0
+Match_Found = ""
+
+        For Each Match In RE_Check.Execute(Test_Value)
+                      
+       'Capture match
+        If Match_Found = "" Then
+        Match_Found = Match.Value
+        Else
+        Match_Found = Match_Found & "|" & Match.Value
+        End If
+                      
+        'Keep track of the number of results
+        Data_Score = Data_Score + RE_Weight
+        
+        Next
+
+'*********************************************************************************************************************************************************************************
+
+End Sub
+
+Sub Corpus_Check(Test_Value, Ws_C As Worksheet, Ws_C_HR, Corpus_Col, Corpus As String, Corpus_Weight As Integer, ByRef Data_Score As Integer, ByRef Match_Found)
+
+Ws_C_SR = Ws_C_HR + 1
+
+Ws_C_LR = Ws_C.Cells(Rows.Count, Corpus_Col).End(xlUp).Row
+
+'Reset Data_Score
+Data_Score = 0
+Match_Found = ""
+
+'Loop through the values of the Corpus
+Ws_C.Activate
+For Corpus_Loop_Row = Ws_C_SR To Ws_C_LR
+
+    If InStr(1, Test_Value, Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value & " ") > 0 Then
+    
+    Data_Score = Data_Score + Corpus_Weight
+    
+        If Match_Found = "" Then
+        Match_Found = Corpus & Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value
+        Else
+        Match_Found = Match_Found & vbLf & Corpus & Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value
+        End If
+    Else
+    End If
+    
+    If InStr(1, Test_Value, Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value & ".") > 0 Then
+    
+    Data_Score = Data_Score + Corpus_Weight
+    
+        If Match_Found = "" Then
+        Match_Found = Corpus & Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value
+        Else
+        Match_Found = Match_Found & vbLf & Corpus & Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value
+        End If
+    Else
+    End If
+    
+    If InStr(1, Test_Value, Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value & ",") > 0 Then
+    
+    Data_Score = Data_Score + Corpus_Weight
+    
+        If Match_Found = "" Then
+        Match_Found = Corpus & Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value
+        Else
+        Match_Found = Match_Found & vbLf & Corpus & Ws_C.Cells(Corpus_Loop_Row, Corpus_Col).Value
+        End If
+    Else
+    End If
+    
+    
+Next Corpus_Loop_Row
+
+End Sub
+
+Sub Clear_results()
+
+' Sub to clear the results - called from the control sub when needed
+
+Dim wb As Workbook
+Set wb = ActiveWorkbook
+
+Dim Ws_R As Worksheet
+Set Ws_R = wb.Sheets("Results_Page")
+
+Ws_R.Visible = xlSheetVisible
+
+Ws_R.Activate
+
+'Remove filters if they've been added
+On Error Resume Next
+Ws_Raw.ShowAllData
+On Error GoTo 0
+
+'Get last used row
+Ws_R_Lr = Ws_R.Cells(Rows.Count, "A").End(xlUp).Row
+
+'If last row is not just the header, delete.
+If Ws_R_Lr > 1 Then
+Rows("2:" & Ws_R_Lr).Delete
+Else
+End If
+
+Ws_R.Visible = xlSheetHidden
+
+End Sub
+
+' Function to convert a column number (r1c1 referencing) to a letter
+Function Col_Letter(lngCol As Long) As String
+    Dim vArr
+    vArr = Split(Cells(1, lngCol).Address(True, False), "$")
+    Col_Letter = vArr(0)
+End Function
+
